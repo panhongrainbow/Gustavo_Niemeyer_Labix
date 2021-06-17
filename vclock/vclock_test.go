@@ -372,3 +372,35 @@ func (s *S) TestMergeBack1(c *C) {
 		fmt.Println(vc3)
 	}
 }
+
+// 新增测试2：测试 Eqaul 定义
+func (s *S) TestEqual(c *C) {
+	{
+		vc1 := vclock.New() // Go Routine g1 的 Vector Clock
+		vc1.Update("g1", 1)
+
+		vc2 := vc1.Copy() // Go Routine g2 的 Vector Clock
+		vc1.Update("g2", 1)
+		vc2.Update("g2", 1)
+
+		c.Assert(vc1.Compare(vc2, vclock.Equal), Equals, true)
+	}
+}
+
+func (s *S) TestMerge2(c *C) {
+	{
+		vc1 := vclock.New() // Go Routine g1 的 Vector Clock
+		vc1.Update("g1", 1)
+
+		vc2 := vc1.Copy() // Go Routine g2 的 Vector Clock
+		vc1.Update("g1", 2)
+		vc1.Update("g1", 5)
+		vc2.Update("g2", 1)
+
+		fmt.Println("1", vc1)
+		fmt.Println("2", vc2)
+		vc1.Merge(vc2)
+		fmt.Println("3", vc1)
+		fmt.Println("4", vc2)
+	}
+}

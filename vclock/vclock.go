@@ -61,7 +61,7 @@ type VClock struct {
 	items         []itemType
 }
 
-// findItem finds the index for the item with the given id.
+// findItem finds the index for the item with the given id. (查看在 Vclock 里的 Slice 里的第几个原素)
 func (vc *VClock) findItem(id string) (index int, found bool) {
 	for i := range vc.items {
 		if vc.items[i].id == id {
@@ -76,8 +76,8 @@ func (vc *VClock) updateItem(id string, ticks, when uint64) {
 	if when > 0 {
 		vc.hasUpdateTime = true
 	}
-	if i, found := vc.findItem(id); found {
-		vc.items[i].ticks += ticks
+	if i, found := vc.findItem(id); found { // 更新时，要 when 的时间比较新(大)，才能更新
+		vc.items[i].ticks += ticks // 存在的话，加 ticket 的值
 		if when > vc.items[i].lastUpdate {
 			vc.items[i].lastUpdate = when
 		}
@@ -103,7 +103,7 @@ func New() *VClock {
 }
 
 // Copy returns a copy of vc.
-func (vc *VClock) Copy() *VClock {
+func (vc *VClock) Copy() *VClock { // 直接复制
 	other := New()
 	other.items = make([]itemType, len(vc.items))
 	copy(other.items, vc.items)
@@ -113,13 +113,13 @@ func (vc *VClock) Copy() *VClock {
 // Update increments id's clock ticks in vc. The when update time is associated
 // with id and may be used for pruning the vector clock. It may have any unit,
 // but smaller values are represented in shorter space.
-func (vc *VClock) Update(id string, when uint64) {
+func (vc *VClock) Update(id string, when uint64) { // ticket 加 1
 	vc.updateItem(id, 1, when)
 }
 
 // LastUpdate returns the most recent (maximum) update time of
 // all ids known to vc.
-func (vc *VClock) LastUpdate() (last uint64) {
+func (vc *VClock) LastUpdate() (last uint64) { // 回传之前写入的 when 值
 	for i := 0; i != len(vc.items); i++ {
 		if vc.items[i].lastUpdate > last {
 			last = vc.items[i].lastUpdate
@@ -130,6 +130,18 @@ func (vc *VClock) LastUpdate() (last uint64) {
 
 // Compare returns whether other matches any one of the conditions ORed
 // together within cond (Equal, Ancestor, Descendant, or Concurrent).
+/*
+	if lenVC > lenOther {
+		otherIs = Ancestor
+	(otherIs 为祖先时，vc 的数量较多)
+
+	if lenVC > lenOther {
+		if cond&(Ancestor|Concurrent) == 0 {
+			return false
+		}
+	(vc 的数量较多，cond 应要传入祖先或并发)
+	(cond 是指 other 的狀態，other 應要為祖先)
+*/
 func (vc *VClock) Compare(other *VClock, cond Condition) bool {
 	var otherIs Condition
 
@@ -141,12 +153,12 @@ func (vc *VClock) Compare(other *VClock, cond Condition) bool {
 		if cond&(Ancestor|Concurrent) == 0 {
 			return false
 		}
-		otherIs = Ancestor
+		otherIs = Ancestor // vc 的数量较多，other 可能是祖先
 	} else if lenVC < lenOther {
 		if cond&(Descendant|Concurrent) == 0 {
 			return false
 		}
-		otherIs = Descendant
+		otherIs = Descendant // vc 的数量较少，vc 可能是祖先
 	} else {
 		otherIs = Equal
 	}
@@ -154,35 +166,35 @@ func (vc *VClock) Compare(other *VClock, cond Condition) bool {
 	// Compare matching items.
 	lenDiff := lenOther - lenVC
 	for oi := 0; oi != len(other.items); oi++ {
-		if vci, found := vc.findItem(other.items[oi].id); found {
+		if vci, found := vc.findItem(other.items[oi].id); found { // vc 有这个元表
 			otherTicks := other.items[oi].ticks
 			vcTicks := vc.items[vci].ticks
-			if otherTicks > vcTicks {
+			if otherTicks > vcTicks { // other tick 较大
 				if otherIs == Equal {
-					if cond&Descendant == 0 {
+					if cond&Descendant == 0 { // vc 的数量相同，vc 的 ticket 也较小，这时 other 可能是 子孫
 						return false
 					}
 					otherIs = Descendant
-				} else if otherIs == Ancestor {
+				} else if otherIs == Ancestor { // vc 的数量较多，vc 的 ticket 也较小，这时就是并发 (只要是就中断)
 					return cond&Concurrent != 0
 				}
-			} else if otherTicks < vcTicks {
+			} else if otherTicks < vcTicks { // other tick 较小
 				if otherIs == Equal {
-					if cond&Ancestor == 0 {
+					if cond&Ancestor == 0 { // vc 的数量相同，vc 的 ticket 也较大，这时 other 可能是 祖先
 						return false
 					}
 					otherIs = Ancestor
-				} else if otherIs == Descendant {
+				} else if otherIs == Descendant { // vc 的数量较少，vc 的 ticket 也较大，这时就是并发 (只要是就中断)
 					return cond&Concurrent != 0
 				}
 			}
-		} else {
+		} else { // vc 没这个元表
 			// Other has an item which vc does not. Other must be
 			// either an ancestor, or concurrent.
 			if otherIs == Equal {
 				// With the same length concurrent is the only choice.
-				return cond&Concurrent != 0
-			} else if lenDiff--; lenDiff < 0 {
+				return cond&Concurrent != 0 // 这时就是并发 (只要是就中断)
+			} else if lenDiff--; lenDiff < 0 { // vc 数量较大
 				// Missing items. Can't be a descendant anymore.
 				return cond&Concurrent != 0
 			}
